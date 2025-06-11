@@ -29,7 +29,7 @@ download_with_gdown() {\n\
     local output=$2\n\
     local description=$3\n\
     echo "Downloading $description..."\n\
-    if gdown --id "$file_id" --output "$output" --quiet; then\n\
+    if gdown "$file_id" --output "$output" --quiet; then\n\
         local size=$(stat -c%s "$output" 2>/dev/null || echo "0")\n\
         echo "✅ Successfully downloaded $description (${size} bytes)"\n\
         return 0\n\
@@ -83,13 +83,26 @@ ls -lh data/\n\
 ls -lh model_deployment/\n\
 echo "Starting services..."\n\
 \n\
+# Start backend server in background and keep it running\n\
 echo "Starting backend server..."\n\
 uvicorn backend_server:app --host 0.0.0.0 --port 8000 &\n\
 BACKEND_PID=$!\n\
 echo "Backend started with PID $BACKEND_PID"\n\
-sleep 10\n\
+\n\
+# Wait for backend to be ready\n\
+echo "Waiting for backend to initialize..."\n\
+sleep 15\n\
+\n\
+# Check if backend is still running\n\
+if ps -p $BACKEND_PID > /dev/null; then\n\
+    echo "Backend is running successfully"\n\
+else\n\
+    echo "Backend failed to start properly"\n\
+fi\n\
+\n\
+# Start frontend (this will run in foreground and keep container alive)\n\
 echo "Starting frontend..."\n\
-streamlit run streamlit_client.py --server.address 0.0.0.0 --server.port $PORT --server.headless true --server.enableCORS false\n\
+exec streamlit run streamlit_client.py --server.address 0.0.0.0 --server.port $PORT --server.headless true --server.enableCORS false\n\
 ' > start.sh && chmod +x start.sh
 
 EXPOSE 8501
