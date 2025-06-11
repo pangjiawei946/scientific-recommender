@@ -14,12 +14,12 @@ COPY backend_server.py .
 RUN echo '#!/bin/bash\n\
 # Start backend in background\n\
 uvicorn backend_server:app --host 0.0.0.0 --port 8000 &\n\
-# Start frontend\n\
-streamlit run streamlit_client.py --server.address 0.0.0.0 --server.port \ --server.headless true\n\
+# Start frontend on the port Railway assigns\n\
+streamlit run streamlit_client.py --server.address 0.0.0.0 --server.port $PORT --server.headless true\n\
 ' > start.sh && chmod +x start.sh
 
-# Expose the port that Railway will assign
-EXPOSE \
+# Expose port (Railway will assign this dynamically)
+EXPOSE 8501
 
 # Start both services
-CMD ["./start.sh"]
+CMD ["bash", "./start.sh"]
