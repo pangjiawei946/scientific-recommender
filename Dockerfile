@@ -40,6 +40,8 @@ download_file() {\n\
 if [ ! -z "$ARTICLES_DATA_CSV_ID" ]; then\n\
     download_file "https://drive.google.com/uc?export=download&id=$ARTICLES_DATA_CSV_ID" \\\n\
                   "data/articles_data.csv" "Articles Data CSV"\n\
+    # Also copy to model_deployment for compatibility\n\
+    cp data/articles_data.csv model_deployment/articles_data.csv || echo "Failed to copy CSV"\n\
 fi\n\
 \n\
 if [ ! -z "$ARTICLES_DATA_PKL_ID" ]; then\n\
