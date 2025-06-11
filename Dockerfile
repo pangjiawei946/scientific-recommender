@@ -2,8 +2,8 @@
 
 WORKDIR /app
 
-# Install wget for downloading files
-RUN apt-get update && apt-get install -y wget && rm -rf /var/lib/apt/lists/*
+# Install wget and curl for downloading files
+RUN apt-get update && apt-get install -y wget curl && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install dependencies
 COPY requirements.txt .
@@ -22,71 +22,102 @@ RUN echo '#!/bin/bash\n\
 set -e\n\
 echo "Starting file downloads from Google Drive..."\n\
 \n\
-# Function to download files with retry\n\
-download_file() {\n\
-    local url=$1\n\
+# Function to download large files from Google Drive\n\
+download_large_file() {\n\
+    local file_id=$1\n\
     local output=$2\n\
     local description=$3\n\
     echo "Downloading $description..."\n\
-    if wget -O "$output" "$url"; then\n\
+    \n\
+    # First request to get confirmation token\n\
+    local confirm_url="https://drive.google.com/uc?export=download&id=$file_id"\n\
+    local confirm_page=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate "$confirm_url" -O-)\n\
+    \n\
+    # Extract confirmation token\n\
+    local confirm_token=$(echo "$confirm_page" | grep -oP "confirm=\\K[^&]*" | head -1)\n\
+    \n\
+    if [ -z "$confirm_token" ]; then\n\
+        # If no confirmation needed, download directly\n\
+        if wget --load-cookies /tmp/cookies.txt -O "$output" "$confirm_url"; then\n\
+            echo "✅ Successfully downloaded $description (direct)"\n\
+            rm -f /tmp/cookies.txt\n\
+            return 0\n\
+        fi\n\
+    else\n\
+        # Use confirmation token for large files\n\
+        local download_url="https://drive.google.com/uc?export=download&confirm=$confirm_token&id=$file_id"\n\
+        if wget --load-cookies /tmp/cookies.txt -O "$output" "$download_url"; then\n\
+            echo "✅ Successfully downloaded $description (with confirmation)"\n\
+            rm -f /tmp/cookies.txt\n\
+            return 0\n\
+        fi\n\
+    fi\n\
+    \n\
+    echo "❌ Failed to download $description"\n\
+    rm -f /tmp/cookies.txt\n\
+    return 1\n\
+}\n\
+\n\
+# Function to download small files (no confirmation needed)\n\
+download_small_file() {\n\
+    local file_id=$1\n\
+    local output=$2\n\
+    local description=$3\n\
+    echo "Downloading $description..."\n\
+    if wget -O "$output" "https://drive.google.com/uc?export=download&id=$file_id"; then\n\
         echo "✅ Successfully downloaded $description"\n\
+        return 0\n\
     else\n\
         echo "❌ Failed to download $description"\n\
         return 1\n\
     fi\n\
 }\n\
 \n\
-# Download data files\n\
+# Download large data files\n\
 if [ ! -z "$ARTICLES_DATA_CSV_ID" ]; then\n\
-    download_file "https://drive.google.com/uc?export=download&id=$ARTICLES_DATA_CSV_ID" \\\n\
-                  "data/articles_data.csv" "Articles Data CSV"\n\
-    # Also copy to model_deployment for compatibility\n\
-    cp data/articles_data.csv model_deployment/articles_data.csv || echo "Failed to copy CSV"\n\
+    download_large_file "$ARTICLES_DATA_CSV_ID" "data/articles_data.csv" "Articles Data CSV"\n\
+    # Copy to model_deployment for compatibility\n\
+    cp data/articles_data.csv model_deployment/articles_data.csv 2>/dev/null || echo "Failed to copy CSV"\n\
 fi\n\
 \n\
 if [ ! -z "$ARTICLES_DATA_PKL_ID" ]; then\n\
-    download_file "https://drive.google.com/uc?export=download&id=$ARTICLES_DATA_PKL_ID" \\\n\
-                  "model_deployment/articles_data.pkl" "Articles Data PKL"\n\
+    download_large_file "$ARTICLES_DATA_PKL_ID" "model_deployment/articles_data.pkl" "Articles Data PKL"\n\
 fi\n\
 \n\
-# Download model files\n\
+# Download large model files\n\
 if [ ! -z "$ARTICLES_FEATURES_NPY_ID" ]; then\n\
-    download_file "https://drive.google.com/uc?export=download&id=$ARTICLES_FEATURES_NPY_ID" \\\n\
-                  "model_deployment/articles_features.npy" "Articles Features"\n\
+    download_large_file "$ARTICLES_FEATURES_NPY_ID" "model_deployment/articles_features.npy" "Articles Features"\n\
 fi\n\
 \n\
 if [ ! -z "$KNN_MODELS_PKL_ID" ]; then\n\
-    download_file "https://drive.google.com/uc?export=download&id=$KNN_MODELS_PKL_ID" \\\n\
-                  "model_deployment/knn_models.pkl" "KNN Models"\n\
+    download_large_file "$KNN_MODELS_PKL_ID" "model_deployment/knn_models.pkl" "KNN Models"\n\
 fi\n\
 \n\
 if [ ! -z "$KMEANS_MODEL_PKL_ID" ]; then\n\
-    download_file "https://drive.google.com/uc?export=download&id=$KMEANS_MODEL_PKL_ID" \\\n\
-                  "model_deployment/kmeans_model.pkl" "K-Means Model"\n\
+    download_large_file "$KMEANS_MODEL_PKL_ID" "model_deployment/kmeans_model.pkl" "K-Means Model"\n\
 fi\n\
 \n\
 if [ ! -z "$LSA_MODEL_PKL_ID" ]; then\n\
-    download_file "https://drive.google.com/uc?export=download&id=$LSA_MODEL_PKL_ID" \\\n\
-                  "model_deployment/lsa_model.pkl" "LSA Model"\n\
+    download_large_file "$LSA_MODEL_PKL_ID" "model_deployment/lsa_model.pkl" "LSA Model"\n\
 fi\n\
 \n\
 if [ ! -z "$TFIDF_VECTORIZER_PKL_ID" ]; then\n\
-    download_file "https://drive.google.com/uc?export=download&id=$TFIDF_VECTORIZER_PKL_ID" \\\n\
-                  "model_deployment/tfidf_vectorizer.pkl" "TF-IDF Vectorizer"\n\
+    download_large_file "$TFIDF_VECTORIZER_PKL_ID" "model_deployment/tfidf_vectorizer.pkl" "TF-IDF Vectorizer"\n\
 fi\n\
 \n\
-# Download metadata files\n\
+# Download small metadata files\n\
 if [ ! -z "$MODEL_METADATA_JSON_ID" ]; then\n\
-    download_file "https://drive.google.com/uc?export=download&id=$MODEL_METADATA_JSON_ID" \\\n\
-                  "model_deployment/model_metadata.json" "Model Metadata"\n\
+    download_small_file "$MODEL_METADATA_JSON_ID" "model_deployment/model_metadata.json" "Model Metadata"\n\
 fi\n\
 \n\
 if [ ! -z "$SUBJECT_INDEX_JSON_ID" ]; then\n\
-    download_file "https://drive.google.com/uc?export=download&id=$SUBJECT_INDEX_JSON_ID" \\\n\
-                  "model_deployment/subject_index.json" "Subject Index"\n\
+    download_small_file "$SUBJECT_INDEX_JSON_ID" "model_deployment/subject_index.json" "Subject Index"\n\
 fi\n\
 \n\
 echo "All downloads completed!"\n\
+echo "Checking downloaded files..."\n\
+ls -la data/\n\
+ls -la model_deployment/\n\
 echo "Starting services..."\n\
 \n\
 # Start backend server\n\
